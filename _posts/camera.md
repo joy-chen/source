@@ -1,5 +1,5 @@
 ---
-title: Camera调试相关总结
+title: RK_Camera调试相关总结
 date: 2017-12-21 18:49:21
 tags:
 ---
@@ -37,4 +37,7 @@ getprop | grep sys_graphic
 hardware/rk29/camera/Config
 
 6.关键log点
-CameraHal,
+CameraHal
+
+7.相机设备
+/data/camera/media_profiles.xml

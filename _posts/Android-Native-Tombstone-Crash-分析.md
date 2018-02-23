@@ -31,6 +31,7 @@ backtrace:
 stack:
          0000007f78421b60  0000000000000000
 ```
+
 * 编译信息
 * 问题进程－问题线程－进程名－错误信号
 * 寄存器的值
@@ -39,3 +40,6 @@ stack:
 
 ### SIGSEGV
 * 越界访问
+
+### addr2line
+addr2line -e symbols/system/lib64/xxx.so -f -C <addr

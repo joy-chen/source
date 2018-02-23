@@ -8,3 +8,7 @@ tags:
 
 git checkout -b nativeBranchName remoteBranchPath 切换远程分支到本地
 git diff --staged 查看未提交的更改
+
+### 修改上次提交
+git add <filename> # 或者 git rm
+git commit --amend # 将缓存区的内容做为最近一次提交
