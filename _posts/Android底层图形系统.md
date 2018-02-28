@@ -3,6 +3,8 @@ title: Android底层图形系统
 date: 2018-01-19 17:46:14
 tags:
 ---
+Author JOY.
+<!-- excerpt -->
 
 ## OpenGL ES
 ### 什么是OpenGL？
