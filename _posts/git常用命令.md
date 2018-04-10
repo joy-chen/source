@@ -4,6 +4,7 @@ date: 2017-12-22 17:03:01
 tags:
 ---
 
+Author JOY.
 <!-- excerpt -->
 
 git checkout -b nativeBranchName remoteBranchPath 切换远程分支到本地
