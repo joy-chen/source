@@ -717,8 +717,251 @@ gCameraDevOps =
         OPS(dump)
     },
     OPS(mtk_set_callbacks),
-
-    #undef  OPS
 };
 
 ```
+
+### Camera preview 流程
+
+* frameworks/base/core/java/android/hardware/Camera.java
+
+```
+public final void setPreviewDisplay(SurfaceHolder holder) throws IOException {
+    if (holder != null) {
+        setPreviewSurface(holder.getSurface());
+    } else {
+        setPreviewSurface((Surface)null);
+    }
+}
+
+```
+
+* frameworks/base/core/jni/android_hardware_Camera.cpp
+
+```
+static void android_hardware_Camera_setPreviewSurface(JNIEnv env, jobject thiz, jobject jSurface)
+{
+  surface = android_view_Surface_getSurface(env, jSurface);
+  gbp = surface->getIGraphicBufferProducer();
+  camera->setPreviewTarget(gbp);
+}
+```
+
+* frameworks/av/camera/Camera.cpp
+
+```
+
+// pass the buffered IGraphicBufferProducer to the camera service
+status_t Camera::setPreviewTarget(const sp<IGraphicBufferProducer>& bufferProducer)
+{
+    sp <ICamera> c = mCamera;
+    return c->setPreviewTarget(bufferProducer);
+}
+
+```
+
+* frameworks/av/camera/ICamera.cpp
+
+```
+/ pass the buffered IGraphicBufferProducer to the camera service
+status_t setPreviewTarget(const sp<IGraphicBufferProducer>& bufferProducer)
+{
+    remote()->transact(SET_PREVIEW_TARGET, data, &reply);
+}
+
+```
+
+* frameworks/av/services/camera/libcameraservice/api1/CameraClient.cpp
+
+```
+status_t CameraClient::setPreviewTarget(
+        const sp<IGraphicBufferProducer>& bufferProducer) {
+
+    window = new Surface(bufferProducer, /*controlledByApp*/ true);
+    return setPreviewWindow(binder, window);
+}
+
+status_t CameraClient::setPreviewWindow(const sp<IBinder>& binder,
+        const sp<ANativeWindow>& window) {
+    result = native_window_api_connect(window.get(), NATIVE_WINDOW_API_CAMERA);
+    // If preview has been already started, register preview buffers now.
+    if (mHardware->previewEnabled()) {
+        if (window != 0) {
+            native_window_set_scaling_mode(window.get(),
+                    NATIVE_WINDOW_SCALING_MODE_SCALE_TO_WINDOW);
+            native_window_set_buffers_transform(window.get(), mOrientation);
+            result = mHardware->setPreviewWindow(window);
+        }
+    }
+    disconnectWindow(mPreviewWindow);
+    mSurface = binder;
+    mPreviewWindow = window;
+}
+
+```
+
+* frameworks/av/services/camera/libcameraservice/device1/CameraHardwareInterface.h
+
+```
+
+status_t setPreviewWindow(const sp<ANativeWindow>& buf)
+{
+  return mDevice->ops->set_preview_window(mDevice,
+                     buf.get() ? &mHalPreviewWindow.nw : 0);
+}
+
+```
+
+* vendor/mediatek/proprietary/hardware/mtkcam/v1/device/Cam1Device.cpp
+
+```
+static int camera_set_preview_window(
+    struct camera_device * device,
+    struct preview_stream_ops window
+)
+{
+  pDev->setPreviewWindow(window);
+}
+
+status_t
+Cam1DeviceBase::
+startPreview()
+{
+  onStartPreview();
+  enableDisplayClient();
+  mpCamClient->startPreview();
+  status = mpCamAdapter->startPreview();
+}
+
+DefaultCam1Device::
+onStartPreview()
+{
+  initCameraAdapter();
+}
+```
+
+* vendor/mediatek/proprietary/hardware/mtkcam/v1/device/Cam1DeviceBase.cpp
+
+```
+
+status_t
+Cam1DeviceBase::
+setPreviewWindow(preview_stream_ops* window)
+{
+    status_t status = initDisplayClient(window);
+    enableDisplayClient();
+}
+
+status_t
+Cam1DeviceBase::
+initDisplayClient(preview_stream_ops* window)
+{
+  queryPreviewSize(previewSize.width, previewSize.height);
+  mpDisplayClient = IDisplayClient::createInstance();
+  mpDisplayClient->init();
+  mpDisplayClient->setWindow(window, previewSize.width, previewSize.height, queryDisplayBufCount());
+  mpDisplayClient->setImgBufProviderClient(mpCamAdapter);
+}
+
+status_t
+Cam1DeviceBase::
+enableDisplayClient()
+{
+  queryPreviewSize(previewSize.width, previewSize.height);
+  mpDisplayClient->enableDisplay(previewSize.width, previewSize.height, queryDisplayBufCount(), mpCamAdapter);
+}
+
+bool
+Cam1DeviceBase::
+initCameraAdapter()
+{
+  mpCamAdapter = ICamAdapter::createInstance(mDevName, mi4OpenId, mpParamsMgr);
+  mpCamAdapter->init();
+  mpCamAdapter->setCallbacks(mpCamMsgCbInfo);
+  mpCamAdapter->enableMsgType(mpCamMsgCbInfo->mMsgEnabled);
+  mpCamAdapter->setParameters();
+  mpDisplayClient->setImgBufProviderClient(mpCamAdapter);
+  mpCamClient->setImgBufProviderClient(mpCamAdapter);
+}
+
+```
+
+* vendor/mediatek/proprietary/platform/mt6735/hardware/mtkcam/D1/v1/adapter/MtkDefault/MtkDefaultCamAdapter.cpp
+
+```
+bool
+CamAdapter::
+init()
+{
+  mpResMgrDrv = ResMgrDrv::createInstance(getOpenId());
+  mpResMgrDrv->init();
+  mpResMgrDrv->setMode(&mode);
+  mpCapBufMgr         = CapBufMgr::createInstance();
+  mpAllocBufHdl       = AllocBufHandler::createInstance();
+  mpDefaultBufHdl     = DefaultBufHandler::createInstance();
+  mpDefaultCtrlNode   = DefaultCtrlNode::createInstance("", DefaultCtrlNode::CTRL_NODE_DEFAULT);
+  mpStateManager = IStateManager::createInstance();
+  mpStateManager->init();
+  init3A();
+  mpCaptureCmdQueThread = ICaptureCmdQueThread::createInstance(this);
+  mpCpuCtrl = CpuCtrl::createInstance();
+  mpCpuCtrl->init();
+
+}
+```
+
+* vendor/mediatek/proprietary/hardware/mtkcam/v1/client/DisplayClient/DisplayClient.cpp
+
+```
+bool
+DisplayClient::
+enableDisplay(
+    int32_t const   i4Width,
+    int32_t const   i4Height,
+    int32_t const   i4BufCount,
+    sp<IImgBufProviderClient>const& rpClient
+)
+{
+  uninit();
+  init();
+  setWindow(pStreamOps, i4Width, i4Height, i4BufCount);
+  setImgBufProviderClient(rpClient);
+  enableDisplay();
+}
+
+bool
+DisplayClient::
+enableDisplay()
+{
+  mpDisplayThread->postCommand(Command(Command::eID_WAKEUP));
+}
+
+```
+
+* vendor/mediatek/proprietary/hardware/mtkcam/v1/client/DisplayClient/DisplayThread.cpp
+
+```
+bool
+DisplayThread::
+threadLoop()
+{
+  case Command::eID_WAKEUP:
+  mpThreadHandler->onThreadLoop(cmd);
+}
+
+```
+
+* vendor/mediatek/proprietary/hardware/mtkcam/v1/client/DisplayClient/DisplayClient.BufOps.cpp
+
+```
+bool
+DisplayClient::
+onThreadLoop(Command const& rCmd)
+{
+  prepareAllTodoBuffers(pImgBufQueue);
+  pImgBufQueue->startProcessor();
+}
+```
+
+
+[!](https://blog.csdn.net/eternity9255/article/details/52790962)
